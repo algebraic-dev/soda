@@ -7,33 +7,38 @@ namespace Grape
 -- of a parser combinator that i can think now. It will be used in
 -- future things
 
--- The type synonym to a function that can fail and is provided with ByteArray
 structure ParseState where
+  -- This field stores the path that the parser walked until it reached
+  -- into an error (it uses the labels given by the "label" function).
   labelList : List String
 
-def Grape (t: Type u): Type u := ByteArray → ParseState → (Result t)
+-- The type synonym to a function that can fail and is feed with ByteArray
+def Grape (t: Type u): Type u :=
+  ByteArray → ParseState → (Result t)
 
 @[inline]
-def map (fn: α → β) (parser: Grape α): Grape β := λbs => Result.map fn ∘ parser bs
+def map (fn: α → β) (parser: Grape α): Grape β := λbs =>
+  Result.map fn ∘ parser bs
 
 @[inline]
-def pure (ins : α): Grape α := λinput _ => Result.done ins input
+def pure (result : α): Grape α := λinput _ =>
+  Result.done result input
 
 def seq (fn: Grape (α → β)) (toApp : Unit → Grape α): Grape β :=
-    λinput ls => Result.map (λ⟨fn, arg⟩ => fn arg) (resultProd ls (fn input ls) toApp)
+    λinput ps => Result.map (λ⟨fn, arg⟩ => fn arg) (resultProd ps (fn input ps) toApp)
   where
     resultProd : ∀{α β : Type}, ParseState -> Result α → (Unit → Grape β) → Result (α × β)
-    | ls, Result.done res inp, fn₂ => Result.map ((res, ·)) (fn₂ () inp ls)
+    | ps, Result.done res inp, fn₂ => Result.map ((res, ·)) (fn₂ () inp ps)
     | _,  Result.error r err , _   => Result.error r err
-    | ls, Result.cont cont   , fn₂ => Result.cont (λinput => resultProd ls (cont input) fn₂)
+    | ps, Result.cont cont   , fn₂ => Result.cont (λinput => resultProd ps (cont input) fn₂)
 
 def bind (parserA : Grape α) (parserFn : α → Grape β): Grape β :=
-    λinput ls => resultBind ls (parserA input ls) parserFn
+    λinput ps => resultBind ps (parserA input ps) parserFn
   where
     resultBind : ParseState → Result α → (α → Grape β) → Result β
-    | ls, Result.done res inp, fn₂ => fn₂ res inp ls
+    | ps, Result.done res inp, fn₂ => fn₂ res inp ps
     | _,  Result.error r err , _   => Result.error r err
-    | ls, Result.cont cont   , fn₂ => Result.cont (λinput => resultBind ls (cont input) fn₂)
+    | ps, Result.cont cont   , fn₂ => Result.cont (λinput => resultBind ps (cont input) fn₂)
 
 instance : Monad Grape where
   map  := Grape.map
@@ -43,42 +48,56 @@ instance : Monad Grape where
 
 instance : MonadExcept String Grape where
   throw str         := λ_ st => Result.error st.labelList str
-  tryCatch op onErr := λinput ls =>
-    match op input ls with
+  tryCatch op onErr := λinput ps =>
+    match op input ps with
     | Result.done res inp => Result.done res inp
-    | Result.error _ err  => onErr err input ls
+    | Result.error _ err  => onErr err input ps
     | Result.cont cont    => Result.cont cont
 
-instance : AndThen (Grape α) where andThen fst snd := fst >>= (λ_ => snd ())
-instance : OrElse (Grape α) where orElse fst snd := tryCatch fst (λ_ => snd ())
+instance : AndThen (Grape α) where
+  andThen fst snd := fst >>= (λ_ => snd ())
+
+instance : OrElse (Grape α) where
+  orElse fst snd := tryCatch fst (λ_ => snd ())
 
 -- Mini parser combinators
 
-def garantee (ls: List String) (res: Option α) (fn: ByteArray → Result α) (input: ByteArray): Result α :=
+-- Probably this function is just a bad way to garantee that the parser will not continue
+-- forever when there's no input.
+def garantee (labelList: List String) (res: Option α) (fn: ByteArray → Result α) (input: ByteArray): Result α :=
   if input.size == 0
     then match res with
          | some res => Result.done res input
-         | none => Result.error ls "unexpected eof"
+         | none => Result.error labelList "unexpected eof"
     else fn input
 
-partial def Result.ByteArray.takeN (ls: List String) (on: Nat) (ba: ByteArray) : Result ByteArray :=
+-- Takes n bytes from a byteArray
+partial def Result.ByteArray.takeN (labelList: List String) (on: Nat) (ba: ByteArray) : Result ByteArray :=
   if on > ba.size
-    then Result.cont (garantee ls none (takeN ls on $ ba ++ ·))
+    then Result.cont (garantee labelList none (takeN labelList on $ ba ++ ·))
     else let ⟨start, end'⟩ := ByteArray.split ba on; Result.done start end'
 
-partial def Result.ByteArray.string (ls: List String) (pref: ByteArray) (org: ByteArray): Result Unit :=
+-- check if bytearray is a prefix of another bytearray
+partial def Result.ByteArray.string (labelList: List String) (pref: ByteArray) (org: ByteArray): Result Unit :=
   match ByteArray.isPrefixOf pref org with
-  | Step.cont prefCt => Result.cont (garantee ls none (string ls prefCt))
+  | Step.cont prefCt => Result.cont (garantee labelList none (string labelList prefCt))
   | Step.done true   => Result.done () (org.extract pref.size org.size)
-  | Step.done false  => Result.error ls "prefix not match"
+  | Step.done false  => Result.error labelList "prefix not match"
 
-partial def Result.ByteArray.takeWhile (nonEmpty: Bool) (ls: List String) (pred: UInt8 → Bool) (bs: ByteArray): Result ByteArray :=
-    match bs.findIdx? (not $ pred ·) with
-    | some n => if n == 0 && nonEmpty == true
-                    then Result.error ls "cannot match"
-                    else let ⟨start, end'⟩ := ByteArray.split bs n; Result.done start end'
-    | none   => Result.cont (garantee ls (some bs) (Result.map (bs ++ ·) ∘ takeWhile nonEmpty ls pred))
+-- Takes bytes until the predicate returns false.
+partial def Result.ByteArray.takeWhile (nonEmpty: Bool) (labelList: List String) (pred: UInt8 → Bool) (bs: ByteArray): Result ByteArray :=
+    match bs.findIdx? (not ∘ pred) with
+    | some idx =>
+      if idx == 0 && nonEmpty == true
+        then Result.error labelList "cannot match"
+        else let ⟨start, end'⟩ := ByteArray.split bs idx
+             Result.done start end'
+    | none =>
+      Result.cont
+        $ garantee labelList (some bs)
+        $ Result.map bs.append ∘ takeWhile nonEmpty labelList pred
 
+-- Check the first byte is part of another bytearray
 partial def Result.ByteArray.oneOf (ls: List String) (bs: ByteArray) (imp: ByteArray): Result UInt8 :=
   if imp.size == 0
     then Result.cont (garantee ls none (oneOf ls bs))

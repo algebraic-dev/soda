@@ -7,7 +7,7 @@ def Char.upperCase  : UInt8 → Bool := λchr => chr >= 65 && chr <= 90
 
 def Char.lowerCase  : UInt8 → Bool := λchr => chr >= 97 && chr <= 122
 
-def Char.number     : UInt8 → Bool := λchr => chr >= 48 && chr <= 57
+def Char.number : UInt8 → Bool := λchr => chr >= 48 && chr <= 57
 
 def Char.whitespace : UInt8 → Bool := λchr => chr == 32 || chr == 10 || chr == 13
 
