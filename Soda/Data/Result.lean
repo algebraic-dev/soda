@@ -12,6 +12,12 @@ instance [ToString α] : Repr (Result α) where
     | Result.error ls x, _  => "Error " ++ repr x ++ " " ++ repr ls
     | Result.cont _,  _    => "Continuation"
 
+instance [Repr α] : Repr (Result α) where
+  reprPrec
+    | Result.done x r, _   => "Done(" ++ repr x ++ "," ++ toString r ++ ")"
+    | Result.error ls x, _  => "Error " ++ repr x ++ " " ++ repr ls
+    | Result.cont _,  _    => "Continuation"
+
 instance [ToString α]  : ToString (Result α) where toString := reprStr
 
 @[inline]
