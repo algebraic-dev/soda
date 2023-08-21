@@ -24,13 +24,13 @@ def map (fn: α → β) (parser: Grape α): Grape β := λbs =>
 def pure (result : α): Grape α := λinput _ =>
   Result.done result input
 
-def seq (fn: Grape (α → β)) (toApp : Unit → Grape α): Grape β :=
+partial def seq (fn: Grape (α → β)) (toApp : Unit → Grape α): Grape β :=
     λinput ps => Result.map (λ⟨fn, arg⟩ => fn arg) (resultProd ps (fn input ps) toApp)
   where
     resultProd : ∀{α β : Type}, ParseState -> Result α → (Unit → Grape β) → Result (α × β)
-    | ps, Result.done res inp, fn₂ => Result.map ((res, ·)) (fn₂ () inp ps)
-    | _,  Result.error r err , _   => Result.error r err
-    | ps, Result.cont cont   , fn₂ => Result.cont (λinput => resultProd ps (cont input) fn₂)
+    | _, _, ps, Result.done res inp, fn₂ => Result.map ((res, ·)) (fn₂ () inp ps)
+    | _, _, _,  Result.error r err , _   => Result.error r err
+    | _, _, ps, Result.cont cont   , fn₂ => Result.cont (λinput => resultProd ps (cont input) fn₂)
 
 def bind (parserA : Grape α) (parserFn : α → Grape β): Grape β :=
     λinput ps => resultBind ps (parserA input ps) parserFn
@@ -101,16 +101,16 @@ partial def Result.ByteSlice.takeWhile (nonEmpty: Bool) (labelList: List String)
 partial def Result.ByteSlice.oneOf (ls: List String) (bs: ByteSlice) (imp: ByteSlice): Result UInt8 :=
   if imp.size == 0
     then Result.cont (garantee ls none (oneOf ls bs))
-    else match ByteSlice.findIdx? bs (· == imp[0]) with
-         | some x => Result.done bs[x] (imp.extract 1 imp.size)
+    else match ByteSlice.findIdx? bs (· == imp.getIdx 0) with
+         | some x => Result.done (bs.getIdx x) (imp.extract 1 imp.size)
          | none   => Result.error ls "cannot match"
 
 -- Checks if the first character
 partial def Result.ByteSlice.byPred (ls: List String) (fn: UInt8 → Bool) (imp: ByteSlice): Result UInt8 :=
   if imp.size == 0
     then Result.cont (garantee ls none (byPred ls fn))
-    else if fn imp[0]
-          then Result.done imp[0] (imp.extract 1 imp.size)
+    else if fn $ imp.getIdx 0
+          then Result.done (imp.getIdx 0) (imp.extract 1 imp.size)
           else Result.error ls "cannot match"
 
 -- Idk why it fails to show termination so i'm using this hack that probably will last

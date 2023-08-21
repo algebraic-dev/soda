@@ -22,7 +22,7 @@ namespace ByteSlice
 def toChar : UInt8 → Char := Char.ofNat ∘ UInt8.toNat
 
 @[inline]
-def getIdx (self: ByteSlice) (idx: Nat) : UInt8 := self.arr[self.off + idx]
+def getIdx (self: ByteSlice) (idx: Nat) : UInt8 := self.arr[self.off + idx]!
 
 def getByteArray (self: ByteSlice): ByteArray := self.arr.extract self.off (self.off + self.size)
 
@@ -48,7 +48,7 @@ def findIdx? (self: ByteSlice) (fn: UInt8 → Bool) : Option Nat :=
     contains' : Nat → Nat → ByteSlice → Option Nat
       | Nat.zero ,  _, _ => none
       | Nat.succ m, n, s =>
-        if fn s[n]
+        if fn $ s.getIdx n
           then some n
           else contains' m (n + 1) s
 
@@ -73,6 +73,6 @@ partial def isPrefixOf (pref: ByteSlice) (org: ByteSlice): Step Bool ByteSlice :
       | idx , 0  , true , true  => (Step.cont $ pref.extract 0 idx)
       | _   , 0  , res  , false => Step.done res
       | _   , _  , false, _     => Step.done false
-      | idx , n+1, _    , lesst => comparePrefix (idx+1) n (pref[idx] == org[idx]) lesst
+      | idx , n+1, _    , lesst => comparePrefix (idx+1) n (pref.getIdx idx == org.getIdx idx) lesst
 
 end ByteSlice
