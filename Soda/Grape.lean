@@ -46,13 +46,15 @@ instance : Monad Grape where
   seq  := Grape.seq
   bind := Grape.bind
 
+def tryCatchResult (result: Result α) (onErr: String → Result α): Result α :=
+  match result with
+  | Result.done res inp => Result.done res inp
+  | Result.error _ err  => onErr err
+  | Result.cont cont    => Result.cont (λinput => tryCatchResult (cont input) onErr)
+
 instance : MonadExcept String Grape where
-  throw str         := λ_ st => Result.error st.labelList str
-  tryCatch op onErr := λinput ps =>
-    match op input ps with
-    | Result.done res inp => Result.done res inp
-    | Result.error _ err  => onErr err input ps
-    | Result.cont cont    => Result.cont cont
+  throw str         := λ_     st => Result.error st.labelList str
+  tryCatch op onErr := λinput ps => tryCatchResult (op input ps) (λerr => onErr err input ps)
 
 instance : AndThen (Grape α) where
   andThen fst snd := fst >>= (λ_ => snd ())
