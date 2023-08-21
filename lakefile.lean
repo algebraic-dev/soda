@@ -1,7 +1,6 @@
 import Lake
 open Lake DSL
 
-package soda
+package «soda» {}
 
-@[defaultTarget]
-lean_lib Soda
+lean_lib «Soda» {}
