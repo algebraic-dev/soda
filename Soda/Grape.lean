@@ -99,6 +99,9 @@ partial def Result.ByteSlice.takeWhile (nonEmpty: Bool) (labelList: List String)
         $ garantee labelList (some bs)
         $ Result.map (ByteSlice.heavyAppend bs) ∘ takeWhile nonEmpty labelList pred
 
+partial def Result.ByteSlice.takeUntilEnd (bs: ByteSlice): Result ByteSlice :=
+    Result.done bs (ByteSlice.extract bs bs.size bs.size)
+
 -- Check the first byte is part of another bytearray
 partial def Result.ByteSlice.oneOf (ls: List String) (bs: ByteSlice) (imp: ByteSlice): Result UInt8 :=
   if imp.size == 0
@@ -129,6 +132,12 @@ def takeWhile1 (pred: UInt8 → Bool): Grape ByteSlice := λimp ls => Result.Byt
 
 @[inline]
 def takeWhile (pred: UInt8 → Bool): Grape ByteSlice := λimp ls => Result.ByteSlice.takeWhile false ls.labelList pred imp
+
+@[inline]
+def takeUntilEnd : Grape ByteSlice := λimp _ => Result.ByteSlice.takeUntilEnd imp
+
+@[inline]
+def fail (msg: String): Grape α := λ_ _ => Result.error [] msg
 
 @[inline]
 def oneOf (pred: String): Grape UInt8 := λimp ls => Result.ByteSlice.oneOf ls.labelList pred.toSlice imp
